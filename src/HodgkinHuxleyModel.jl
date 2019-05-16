@@ -1,4 +1,4 @@
-module seizure_model
+module HodgkinHuxleyModel
 
 using Simulation73
 using RecursiveArrayTools
