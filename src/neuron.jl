@@ -15,9 +15,9 @@
     τ_n::T
     τ_V_f::T
     τ_V_s::T
-    dt_refractory::T,
+    dt_refractory::T
     threshold::T
-    N_per_point::T=1
+    N_per_point::T
 end
 
 mutable struct NeuronData{T,N} <: DEDataArray{T,N}
