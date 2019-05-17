@@ -1,17 +1,26 @@
 
-abstract type AbstractSynapse{T} end
+abstract type AbstractSynapse{T,W} end
+abstract type AbstractSynapticConnectivity{T,W} end
 
-@with_kw struct AMPASynapse{T} <: AbstractSynapse{T}
+@with_kw struct AMPAandGABAConnectivity{T,W} <: AbstractSynapticConnectivity{T,W}
+    synapses::AbstractArray{<:Union{AMPASynapse{T,W},GABASynapse{T,W}}}
+end
+function AMPAandGABAConnectivity{T,W}(;kwargs...)
+    pops([AMPASynapse{T,W} GABASynapse{T,W};
+          AMPASynapse{T,W} GABASynapse{T,W}]; kwargs...)
+end
+
+@with_kw struct AMPASynapse{T,W} <: AbstractSynapse{T}
     E::T
     τ::T
     α::T
     β::T
     γ::T
     delay::T
-    g_max::T
+    g_max::W
 end
 # FIXME recent PR allows abstract constructors
-function AMPASynapse(; E::T=nothing, delay::T=nothing, g_max::T=nothing, τ::T=nothing) where T
+function AMPASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ
     AMPASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
 end
@@ -25,11 +34,10 @@ end
     delay::T
     g_max::T
 end
-function GABASynapse(; E::T=nothing, delay::T=nothing, g_max::T=nothing, τ::T=nothing) where T
+function GABASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ
     GABASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
 end
-
 
 # FIXME collapse these functions into one with the cardinal difference (V_s vs V) dispatched
 # State.last_spike_time is array containing last spike time
@@ -60,38 +68,51 @@ function detect_spikes(state, history, p, t, dt, presynapse_ix)
     return spikes_bitarr
 end
 
-function mutate_potential!(syn::AMPASynapse, d_neuron_state, neuron_state)
-    Vs = neuron_state.x.x[4]
-    @. d_neuron_state.x.x[1] += syn.g * (syn.E * Vs)
+"Mutate potential of either E or I neuron due to conductance from AMPA"
+function mutate_potential!(d_pop_state, pop_state, syn::AMPASynapse)
+    @views begin
+        dV = d_pop_state.x.x[1]
+        Vs = neuron_state.x.x[4]
+        g_AMPA = nueron_stae.x.x[5]
+        @. d_neuron_state.x.x[1] += g_AMPA * (syn.E * Vs)
+    end
 end
-function mutate_potential!(syn::GABASynapse, d_neuron_state, neuron_state)
-    V = neuron_state.x.x[1]
-    @. d_neuron_state.x.x[1] += syn.g * (syn.E * V)
+function mutate_potential!(d_pop_state, pop_state, syn::GABASynapse)
+    @views begin
+        dV = d_pop_state.x.x[1]
+        Vs = pop_state.x.x[4]
+        g_GABA = neuron_stae.x.x[7]
+        @. d_pop_state.x.x[1] += g_GABA * (syn.E * V)
+    end
 end
-function mutate_conductance!(syn::AMPASynapse, d_neuron_state, neuron_state, presynaptic_spikes)
-    d_g, d_z = d_neuron_state.x.x[[5,6]]
-    g, z = neuron_state.x.x[[5,6]]
-    @. x= g_max * neuron_I_spikes
-    @. d_z += syn.α * x + syn.β * z + syn.γ * g
-    @. d_g += z
+function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::AMPASynapse, presynaptic_spikes)
+    @views begin
+        d_g, d_z = d_pop_state.x.x[[5,6]]
+        g, z = pop_state.x.x[[5,6]]
+        @. x = g_max * presynaptic_spikes
+        @. d_z += syn.α * x + syn.β * z + syn.γ * g
+        @. d_g += z
+    end
 end
-function mutate_conductance!(syn::GABASynapse, d_neuron_state, neuron_state, presynaptic_spikes)
-    d_g, d_z = d_neuron_state.x.x[[7,8]]
-    g, z = neuron_state.x.x[[7,8]]
-    @. x = g_max * presynaptic_spikes
-    @. d_z += syn.α * x + syn.β * z + syn.γ * g
-    @. d_g += z
+function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::GABASynapse, presynaptic_spikes)
+    @views begin
+        d_g, d_z = d_pop_state.x.x[[7.8]]
+        g, z = pop_state.x.x[[7.8]]
+        @. x = g_max * presynaptic_spikes
+        @. d_z += syn.α * x + syn.β * z + syn.γ * g
+        @. d_g += z
+    end
 end
 
-function make_mutator(synapse::T_syn, presynapse_ix::Int, dt::Float64) where {T_syn <: AbstractSynapse}
-    function synapse_mutator!(d_state, state, history, p, t)
-        @views begin
-            presynaptic_spikes = detect_spikes(state, history, t-delay, dt, presynapse_ix)
-            for i in 1:2 # number of neuron types
-                d_neuron_i = d_state.x[i]
-                neuron_i = state.x[i]
-                mutate_potential!(synapse, d_neuron_i, neuron_i)
-                mutate_conductance!(synapse, d_neuron_i, neuron_i, presynaptic_spikes)
+function make_mutator(connectivity::AMPAandGABAConnectivity)
+    function connectivity_mutator!(d_state, state, history, p, t)
+        @views for pre_ix in 1:size(connectivity,2)
+            presynaptic_spikes = detect_spikes(state, history, t-delay, dt, pre_ix)
+            for post_ix in 1:size(connectivity,1)
+                d_postsynaptic_population = d_state.x[post_ix]
+                postsynaptic_population = state.x[post_ix]
+                mutate_potential!(d_postsynaptic_population, postsynaptic_population, synapse[post_ix,pre_ix])
+                mutate_conductance!(d_postsynaptic_population, postsynaptic_population, synapse[post_ix,pre_ix], presynaptic_spikes)
             end
         end
     end
