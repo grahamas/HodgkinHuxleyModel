@@ -47,11 +47,34 @@ function SharpBumpStimulus{T,N}(; strength::T=nothing, width::T=nothing,
     end
 end
 
-function on_frame(sbs::SharpBumpStimulus{T,N}, space::AbstractSpace{T,N}, P::Int) where {T,N}
+function on_frame(sbs::TransientBumpStimulus{T,N}, space::AbstractSpace{T,N}, P::Int) where {T,N}
     one_frame = zero(space)
     coords = coordinates(space)
     half_width = sbs.width / 2.0
     one_frame[distance.(coords, Ref(sbs.center)) .<= half_width] .= sbs.strength
     frame = cat((one_frame for i in 1:P)..., dims=N+1)
     return frame
+end
+
+struct RampingBumpStimulus{T,N} <: TransientBumpStimulus{T,N}
+    width::T
+    strength::T
+    start_time::T
+    peak_time::T
+    center::NTuple{N,T}
+end
+
+function RampingBumpStimulus(; peak_strength::T=nothing, width::T=nothing,
+        start_time=0.0, peak_time=nothing, center=NTuple{N,T}(zero(T) for i in 1:N)) where {T,N}
+    return RampingBumpStimulus{T,N}(width, peak_strength, start_time, peak_time, center)
+end
+function make_stimulus(bump::RBS, space::AbstractSpace{T,N}, P::Int) where {T, N, RBS<:RampingBumpStimulus{T,N}}
+    bump_frame = on_frame(bump, space, P)
+    onset = bump.time_window[1]
+    offset = bump.time_window[2]
+    function stimulus!(val, t)
+        if onset <= t < offset
+            val .+= ((t - bump.start_time)/(bump.peak_time - bump.start_time)) * bump_frame
+        end
+    end
 end

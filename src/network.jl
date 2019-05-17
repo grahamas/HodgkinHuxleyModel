@@ -1,4 +1,4 @@
-@with_kw struct HHNetwork{T} <: AbstractModel{T,D,2}
+@with_kw struct HHNetwork{T} <: AbstractModelwithDelay{T,D,2}
     space::AbstractSpace{T,D}
     stimulus::AbstractArray{<:AbstractStimulus{T}}
     synapses::AbstractSynapses{T}
