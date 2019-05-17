@@ -34,7 +34,7 @@ initial_value(neuron::HHNeuron, space::AbstractSpace) = NeuronData(
     ArrayPartition(
         [zero(neuron, space) for i in 1:8]... # [V, n, Vf, Vs, gAMPA, zA, gGABA, gG]
     ), # Differential data
-    zero(neuron, space), # last_spike_time
+    zero(neuron, space) .- ∞, # last_spike_time
     neuron.dt_refractory,
     neuron.threshold
 )

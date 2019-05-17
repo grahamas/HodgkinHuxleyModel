@@ -6,11 +6,20 @@
     neuron_I::HHNeuron{T}
 end
 
-function initial_value(network::HHNetwork)
+function Simulation73.initial_value(network::HHNetwork)
     ArrayPartition(
         initial_value(network.neuron_E, network.space),
         initial_value(network.neuron_I, network.space)
     )
+end
+
+function Simulation73.history(network::HHNetwork)
+    init = initial_value(network); init2 = initial_value(network)
+    init .= -∞
+    for (i, neuron) ∈ init.x
+        neuron.dt_refractory = init2.x[i].dt_refractory
+        neuron.threshold = init2.x[i].threshold
+    end
 end
 
 # FIXME collapse these functions into one with the cardinal difference (V_s vs V) dispatched

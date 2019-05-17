@@ -13,7 +13,7 @@ function maximal_conductances(synapses::AMPAandGABASynapses, space::AbstractSpac
     assuming_1_per_point = map((syn) -> g_max(syn, space), synapses.synapses)
     map(CartesianIndices(assuming_1_per_point)) do ix
         repeat(assuming_1_per_point[ix], inner=(N_per_point[ix[1]], N_per_point[ix[2]]))
-    end        
+    end
 end
 
 @with_kw struct AMPASynapse{T,W} <: AbstractSynapse{T,W}
@@ -64,18 +64,20 @@ end
 # State[2] is neuronI
 # ..
 function detect_spikes(state, history, p, t, dt, presynapse_ix)
-    Vf_before = history(p, t-dt).x[presynapse_ix].x.x[3]
-    Vf_at = history(p, t).x[presynapse_ix].x.x[3]
-    Vf_after = history(p, t+dt).x[presynapse_ix].x.x[3]
+    @views begin
+        Vf_before = history(p, t-dt).x[presynapse_ix].x.x[3]
+        Vf_at = history(p, t).x[presynapse_ix].x.x[3]
+        Vf_after = history(p, t+dt).x[presynapse_ix].x.x[3]
 
-    last_spike_time = history(p,t).x[presynapse_ix].last_spike_time
-    dt_refractory = history(p,t).x[presynapse_ix].dt_refractory
-    threshold = history(p,t).x[presynapse_ix].threshold
+        last_spike_time = history(p,t).x[presynapse_ix].last_spike_time
+        dt_refractory = history(p,t).x[presynapse_ix].dt_refractory
+        threshold = history(p,t).x[presynapse_ix].threshold
 
-    @. spikes_bitarr = ((Vf_at > threshold)
-                         & (Vf_before <= Vf_at)
-                         & (Vf_after <= Vf_at)
-                         & (t - last_spike_time) > dt_refractory)
+        @. spikes_bitarr = ((Vf_at > threshold)
+                             & (Vf_before <= Vf_at)
+                             & (Vf_after <= Vf_at)
+                             & (t - last_spike_time) > dt_refractory)
+    end
     return spikes_bitarr
 end
 
