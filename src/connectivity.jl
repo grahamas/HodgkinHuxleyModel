@@ -1,23 +1,29 @@
 
 abstract type AbstractSynapse{T,W} end
-abstract type AbstractSynapticConnectivity{T,W} end
+abstract type AbstractSynapses{T,W} end
 
-@with_kw struct AMPAandGABAConnectivity{T,W} <: AbstractSynapticConnectivity{T,W}
+@with_kw struct AMPAandGABASynapses{T,W} <: AbstractSynapses{T,W}
     synapses::AbstractArray{<:Union{AMPASynapse{T,W},GABASynapse{T,W}}}
 end
-function AMPAandGABAConnectivity{T,W}(;kwargs...)
+function AMPAandGABASynapses{T,W}(;kwargs...)
     pops([AMPASynapse{T,W} GABASynapse{T,W};
           AMPASynapse{T,W} GABASynapse{T,W}]; kwargs...)
 end
+function maximal_conductances(synapses::AMPAandGABASynapses, space::AbstractSpace, N_per_point::Tuple{Int,Int})
+    assuming_1_per_point = map((syn) -> g_max(syn, space), synapses.synapses)
+    map(CartesianIndices(assuming_1_per_point)) do ix
+        repeat(assuming_1_per_point[ix], inner=(N_per_point[ix[1]], N_per_point[ix[2]]))
+    end        
+end
 
-@with_kw struct AMPASynapse{T,W} <: AbstractSynapse{T}
+@with_kw struct AMPASynapse{T,W} <: AbstractSynapse{T,W}
     E::T
     τ::T
     α::T
     β::T
     γ::T
     delay::T
-    g_max::W
+    connectivity::W
 end
 # FIXME recent PR allows abstract constructors
 function AMPASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
@@ -25,19 +31,24 @@ function AMPASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=n
     AMPASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
 end
 
-@with_kw struct GABASynapse{T} <: AbstractSynapse{T}
+@with_kw struct GABASynapse{T,W} <: AbstractSynapse{T,W}
     E::T
     τ::T
     α::T
     β::T
     γ::T
     delay::T
-    g_max::T
+    connectivity::T
 end
 function GABASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ
     GABASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
 end
+
+@memoize function g_max(syn::AbstractSynapse, space::AbstractSpace)
+    directed_weights(syn.connectivity, space)
+end
+
 
 # FIXME collapse these functions into one with the cardinal difference (V_s vs V) dispatched
 # State.last_spike_time is array containing last spike time
@@ -85,7 +96,7 @@ function mutate_potential!(d_pop_state, pop_state, syn::GABASynapse)
         @. d_pop_state.x.x[1] += g_GABA * (syn.E * V)
     end
 end
-function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::AMPASynapse, presynaptic_spikes)
+function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::AMPASynapse, g_max, presynaptic_spikes)
     @views begin
         d_g, d_z = d_pop_state.x.x[[5,6]]
         g, z = pop_state.x.x[[5,6]]
@@ -94,7 +105,7 @@ function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::AMPASynapse, 
         @. d_g += z
     end
 end
-function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::GABASynapse, presynaptic_spikes)
+function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::GABASynapse, g_max, presynaptic_spikes)
     @views begin
         d_g, d_z = d_pop_state.x.x[[7.8]]
         g, z = pop_state.x.x[[7.8]]
@@ -104,15 +115,16 @@ function mutate_synaptic_conductance!(d_pop_state, pop_state, syn::GABASynapse, 
     end
 end
 
-function make_mutator(connectivity::AMPAandGABAConnectivity)
-    function connectivity_mutator!(d_state, state, history, p, t)
+function make_mutator(synapses::AMPAandGABASynapses, space::AbstractSpace, N_per_point::Tuple{Int,Int})
+    g_maxes = maximal_conductances(synapses, space, N_per_point)
+    function synapses_mutator!(d_state, state, history, p, t)
         @views for pre_ix in 1:size(connectivity,2)
             presynaptic_spikes = detect_spikes(state, history, t-delay, dt, pre_ix)
             for post_ix in 1:size(connectivity,1)
                 d_postsynaptic_population = d_state.x[post_ix]
                 postsynaptic_population = state.x[post_ix]
                 mutate_potential!(d_postsynaptic_population, postsynaptic_population, synapse[post_ix,pre_ix])
-                mutate_conductance!(d_postsynaptic_population, postsynaptic_population, synapse[post_ix,pre_ix], presynaptic_spikes)
+                mutate_conductance!(d_postsynaptic_population, postsynaptic_population, synapse[post_ix,pre_ix], g_maxes[post_ix, pre_ix], presynaptic_spikes)
             end
         end
     end

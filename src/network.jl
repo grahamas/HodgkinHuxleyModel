@@ -1,8 +1,7 @@
 @with_kw struct HHNetwork{T} <: AbstractModel{T,D,2}
     space::AbstractSpace{T,D}
     stimulus::AbstractArray{<:AbstractStimulus{T}}
-    synapse_AMPA::AMPASynapse{T}
-    synapse_GABA::GABASynapse{T}
+    synapses::AbstractSynapses{T}
     neuron_E::HHNeuron{T}
     neuron_I::HHNeuron{T}
 end
@@ -28,9 +27,9 @@ end
 # State[2] is neuronI
 # ..
 function Simulation73.make_system_mutator(network::HHNetwork)
-    stimulus_mutator! = make_mutator(network.stimulus, network.space)
-    synapse_AMPA_mutator! = make_mutator(network.synapse_AMPA)
-    synapse_GABA_mutator! = make_mutator(network.synapse_GABA)
+    N_per_point = (network.neuron_E.N_per_point, network.neuron_I.N_per_point)
+    stimulus_mutator! = make_mutator(network.stimulus, network.space, N_per_point)
+    synapses_mutator! = make_mutator(network.synapses, network.space, N_per_point)
     neuron_E_mutator! = make_mutator(network.neuron_E)
     neuron_I_mutator! = make_mutator(network.neuron_I)
     function system_mutator!(d_state, state, h, p, t)
@@ -39,8 +38,7 @@ function Simulation73.make_system_mutator(network::HHNetwork)
             # Second level, conductances, potential etc
         zero!(d_state)
         stimulus_mutator!(d_state, state, t)
-        synapse_AMPA_mutator!(d_state, state, h, p, t)
-        synapse_GABA_mutator!(d_state, state, h, p, t)
+        synapses_mutator!(d_state, state, h, p, t)
         neuron_E_mutator!(d_state.x[1], state.x[1], t)
         neuron_I_mutator!(d_state.x[2], state.x[2], t)
     end
