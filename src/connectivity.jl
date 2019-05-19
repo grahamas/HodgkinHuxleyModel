@@ -14,7 +14,7 @@ end
 # FIXME recent PR allows abstract constructors
 function AMPASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ
-    AMPASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
+    AMPASynapse{T,W}(E, τ, α, -2α, -α^2, delay, g_max)
 end
 
 struct GABASynapse{T,W} <: AbstractSynapse{T,W}
@@ -28,14 +28,14 @@ struct GABASynapse{T,W} <: AbstractSynapse{T,W}
 end
 function GABASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ
-    GABASynapse{T}(E, τ, α, -2α, -α^2, delay, g_max)
+    GABASynapse{T,W}(E, τ, α, -2α, -α^2, delay, g_max)
 end
 @with_kw struct AMPAandGABASynapses{T,W} <: AbstractSynapses{T,W}
     synapses::AbstractArray{<:Union{AMPASynapse{T,W},GABASynapse{T,W}}}
 end
-function AMPAandGABASynapses(;kwargs...) where {T,W}
-    pops([AMPASynapse{T,W} GABASynapse{T,W};
-          AMPASynapse{T,W} GABASynapse{T,W}]; kwargs...)
+function AMPAandGABASynapses(;kwargs...)
+    pops([AMPASynapse GABASynapse;
+          AMPASynapse GABASynapse]; kwargs...)
 end
 function maximal_conductances(synapses::AMPAandGABASynapses, space::AbstractSpace, N_per_point::Tuple{Int,Int})
     assuming_1_per_point = map((syn) -> g_max(syn, space), synapses.synapses)
@@ -82,11 +82,11 @@ function detect_spikes(state, history, p, t, dt, presynapse_ix)
 end
 
 "Mutate potential of either E or I neuron due to conductance from AMPA"
-function mutate_potential!(d_pop_state, pop_state, syn::AMPASynapse)
+function mutate_potential!(d_neuron_state, neuron_state, syn::AMPASynapse)
     @views begin
-        dV = d_pop_state.x.x[1]
+        dV = d_neuron_state.x.x[1]
         Vs = neuron_state.x.x[4]
-        g_AMPA = nueron_stae.x.x[5]
+        g_AMPA = neuron_stae.x.x[5]
         @. d_neuron_state.x.x[1] += g_AMPA * (syn.E * Vs)
     end
 end
@@ -94,7 +94,7 @@ function mutate_potential!(d_pop_state, pop_state, syn::GABASynapse)
     @views begin
         dV = d_pop_state.x.x[1]
         Vs = pop_state.x.x[4]
-        g_GABA = neuron_stae.x.x[7]
+        g_GABA = neuron_state.x.x[7]
         @. d_pop_state.x.x[1] += g_GABA * (syn.E * V)
     end
 end

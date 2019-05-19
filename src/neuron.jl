@@ -1,5 +1,5 @@
 
-@with_kw struct HHNeuron{T}
+@with_kw struct HHPopulation{T}
     C::T
     E_K::T
     E_L::T
@@ -27,26 +27,26 @@ mutable struct NeuronData{T,N} <: DEDataArray{T,N}
     threshold::T
 end
 
-function zero(neuron::HHNeuron{T}, space::AbstractSpace{T,D}) where {T,D}
-    cat([zero(space) for i in 1:neuron.N_per_point]..., dims=D+1)
+function zero(population::HHPopulation{T}, space::AbstractSpace{T,D}) where {T,D}
+    cat([zero(space) for i in 1:population.N_per_point]..., dims=D+1)
 end
-initial_value(neuron::HHNeuron, space::AbstractSpace) = NeuronData(
+initial_value(population::HHPopulation, space::AbstractSpace) = NeuronData(
     ArrayPartition(
-        [zero(neuron, space) for i in 1:8]... # [V, n, Vf, Vs, gAMPA, zA, gGABA, gG]
+        [zero(population, space) for i in 1:8]... # [V, n, Vf, Vs, gAMPA, zA, gGABA, gG]
     ), # Differential data
-    zero(neuron, space) .- ∞, # last_spike_time
-    neuron.dt_refractory,
-    neuron.threshold
+    zero(population, space) .- ∞, # last_spike_time
+    population.dt_refractory,
+    population.threshold
 )
 
 function Θ(V, V_half, K)
     1 / (1 + exp((V_half - V) / K))
 end
 
-function make_mutator(neuron::HHNeuron)
-    @unpack_HHNeuron neuron # FIXME I am dangerous
-    function neuron_mutator!(d_neuron_state, neuron_state, t)
-        # Gets neuron_state of single neuron, so neuron_state[1] is V, neuron_state[2] is n,
+function make_mutator(population::HHPopulation)
+    @unpack_HHPopulation population # FIXME I am dangerous
+    function population_mutator!(d_population_state, population_state, t)
+        # Gets neuron_state of single population, so neuron_state[1] is V, neuron_state[2] is n,
         # neuron_state[3] = V_f (high pass), neuron_state[4] = V_s (low pass)
         @views begin
             dV, dn, dV_f, dV_s = d_neuron_state.x.x[1:4]
@@ -62,3 +62,10 @@ function make_mutator(neuron::HHNeuron)
         end
     end
 end
+function make_mutator(populations::AbstractArray{<:HHPopulation})
+    mutators = make_mutator.populations
+    function mutator!(d_state, state, t)
+        zip(mutators, d_state.x, state.x) .|> (mutator!, d_s, s) -> mutator!(d_s, s, t)
+    end
+end
+
