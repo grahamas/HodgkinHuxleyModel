@@ -24,7 +24,7 @@ struct GABASynapse{T,W} <: AbstractSynapse{T,W}
     β::T
     γ::T
     delay::T
-    connectivity::T
+    connectivity::W
 end
 function GABASynapse(; E::T=nothing, delay::T=nothing, g_max::W=nothing, τ::T=nothing) where {T,W}
     α = 1/τ

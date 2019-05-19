@@ -4,12 +4,13 @@ using Simulation73
 using RecursiveArrayTools
 using Parameters
 using DifferentialEquations: DEDataArray
+using BioNeuralNetworkModels
 
 export HHNetwork, HHPopulation
 
 export RampingBumpStimulus
 
-export DecayingExponentialConnectivity, AMPAandGABASynapses
+export AMPAandGABASynapses
 
 include("stimulus.jl")
 include("connectivity.jl")
